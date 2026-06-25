@@ -1,0 +1,4 @@
+fastapi
+openpyxl
+python-multipart
+uvicorn[standard]
