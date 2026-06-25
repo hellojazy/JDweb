@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
 ROOT = Path(__file__).resolve().parent
@@ -21,11 +22,6 @@ UPLOAD_DIR = ROOT / "uploads"
 OUTPUT_DIR = ROOT / "outputs"
 HISTORY_FILE = OUTPUT_DIR / "history.json"
 DB_FILE = ROOT / "jd_replenishment.sqlite3"
-
-FORMULA_TEMPLATE = ROOT / "京东下单模板公式.xlsx"
-MANUAL_TEMPLATE = ROOT / "手工单作业6.23.xlsx"
-B_WAREHOUSE_TEMPLATE = ROOT / "京东入B仓 6.23.xlsx"
-BOX_SPEC_FILE = ROOT / "京东-产品sku 箱规.xlsx"
 
 B_WAREHOUSE_TARGET_TURNOVER_DAYS = 14
 DEFAULT_HOT_TURNOVER_DAYS = 30
@@ -220,17 +216,8 @@ def source_row_to_product(values: dict[str, Any], sku: str) -> dict[str, Any]:
     return row
 
 
-def seed_products_from_excel_if_empty() -> None:
-    init_database()
-    with db_connection() as conn:
-        existing = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-    if existing or not BOX_SPEC_FILE.exists():
-        return
-    import_products_from_excel(BOX_SPEC_FILE)
-
-
 def read_product_metadata() -> dict[str, Any]:
-    seed_products_from_excel_if_empty()
+    init_database()
     box_specs: dict[str, int] = {}
     product_by_sku: dict[str, str] = {}
     with db_connection() as conn:
@@ -246,7 +233,7 @@ def read_product_metadata() -> dict[str, Any]:
 
 
 def list_products() -> dict[str, Any]:
-    seed_products_from_excel_if_empty()
+    init_database()
     with db_connection() as conn:
         rows = conn.execute("SELECT sku, data_json FROM products ORDER BY rowid").fetchall()
     products: list[dict[str, Any]] = []
@@ -302,53 +289,15 @@ def import_products_from_excel(path: Path) -> dict[str, Any]:
 
 
 def read_template_metadata() -> dict[str, Any]:
-    wb = openpyxl.load_workbook(FORMULA_TEMPLATE, data_only=True)
     product_meta = read_product_metadata()
-
-    selected: set[tuple[str, str]] = set()
-    if "选品仓清单" in wb.sheetnames:
-        ws = wb["选品仓清单"]
-        h = headers_for(ws)
-        for row in range(2, ws.max_row + 1):
-            sku = normalize_sku(ws.cell(row, h.get("SKU", 2)).value)
-            center = normalize_center(ws.cell(row, h.get("配送中心名称", 5)).value)
-            flag = str(ws.cell(row, h.get("是否选品仓", 6)).value or "").strip()
-            if sku and center and flag == "是":
-                selected.add((sku, center))
-
-    formula_ws = wb["公式"]
-    h = headers_for(formula_ws)
-    band_by_sku: dict[str, str] = {}
-    product_by_sku: dict[str, str] = {}
-    supplier_by_sku: dict[str, str] = {}
     actual_b_warehouse = "成都补货B"
 
-    for row in range(2, formula_ws.max_row + 1):
-        sku = normalize_sku(formula_ws.cell(row, h["商品编码"]).value)
-        if not sku:
-            continue
-        center = normalize_center(formula_ws.cell(row, h["配送中心"]).value)
-        band = formula_ws.cell(row, h["全国28日三级销售额band"]).value
-        product = formula_ws.cell(row, h["商品名称"]).value
-        supplier = formula_ws.cell(row, h["供应商简码"]).value
-        actual = formula_ws.cell(row, h.get("实际B仓", 3)).value
-        if actual:
-            actual_b_warehouse = str(actual).strip()
-        if center == "全国" and band:
-            band_by_sku[sku] = str(band).strip()
-        elif sku not in band_by_sku and band:
-            band_by_sku[sku] = str(band).strip()
-        if sku not in product_by_sku and product:
-            product_by_sku[sku] = str(product)
-        if sku not in supplier_by_sku and supplier:
-            supplier_by_sku[sku] = str(supplier)
-
     return {
-        "selected": selected,
+        "selected": set(),
         "box_specs": product_meta["box_specs"],
-        "band_by_sku": band_by_sku,
-        "product_by_sku": product_by_sku | product_meta["product_by_sku"],
-        "supplier_by_sku": supplier_by_sku,
+        "band_by_sku": {},
+        "product_by_sku": product_meta["product_by_sku"],
+        "supplier_by_sku": {},
         "actual_b_warehouse": actual_b_warehouse,
     }
 
@@ -617,7 +566,7 @@ def calculate_replenishment(
         center = item["center"]
         if center in {"全国", actual_b_warehouse}:
             continue
-        if (sku, center) not in selected:
+        if selected and (sku, center) not in selected:
             skipped_not_selected += 1
             continue
 
@@ -676,16 +625,42 @@ def calculate_replenishment(
     return manual_rows, b_rows, summary, warnings
 
 
+def prepare_output_sheet(ws, headers: list[str], widths: list[int]) -> None:
+    ws.append(headers)
+    ws.freeze_panes = "A2"
+    header_fill = PatternFill("solid", fgColor="126F68")
+    header_font = Font(color="FFFFFF", bold=True)
+    border = Border(bottom=Side(style="thin", color="DCE5E4"))
+    for col_index, header in enumerate(headers, start=1):
+        cell = ws.cell(1, col_index)
+        cell.value = header
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.column_dimensions[cell.column_letter].width = widths[col_index - 1] if col_index <= len(widths) else 16
+    ws.row_dimensions[1].height = 42
+
+
 def fill_manual_workbook(rows: list[ReplenishmentRow], output_path: Path) -> None:
-    wb = openpyxl.load_workbook(MANUAL_TEMPLATE)
-    for sheet in list(wb.sheetnames):
-        if sheet != "手工单":
-            del wb[sheet]
-    ws = wb["手工单"]
-    clear_data_rows(ws)
-    max_col = ws.max_column
+    headers = [
+        "sku*",
+        "采购渠道（格式：非渠道化）",
+        "采购需求数量*",
+        "供应商简码(非必填，不填则取默认供应商)",
+        "期望下单日期范围(非必填，不填则立即自动下单)",
+        "下单时间(格式：0、9、10...)",
+        "配送中心*(格式：北京,上海,广州)",
+        "是否需要供应商回告（格式：是、否，不填则默认是）",
+        "备注",
+        "建单是否允许部分成功（格式：是、否，不填则默认是）",
+        "箱规（必填）",
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "手工单"
+    prepare_output_sheet(ws, headers, [18, 22, 16, 32, 32, 22, 28, 36, 18, 40, 14])
     for idx, row in enumerate(rows, start=2):
-        copy_row_style(ws, 1, idx, max_col)
         ws.cell(idx, 1).value = row.sku
         ws.cell(idx, 3).value = row.quantity
         ws.cell(idx, 7).value = row.center
@@ -694,12 +669,25 @@ def fill_manual_workbook(rows: list[ReplenishmentRow], output_path: Path) -> Non
 
 
 def fill_b_workbook(rows: list[ReplenishmentRow], output_path: Path) -> None:
-    wb = openpyxl.load_workbook(B_WAREHOUSE_TEMPLATE)
+    headers = [
+        "sku*",
+        "采购渠道（格式：非渠道化、C采购渠道、B采购渠道，非必填，不填则系统默认获取）",
+        "采购需求数量*",
+        "供应商简码(采购类型为BBCC时必填)",
+        "期望下单日期范围(格式：yyyymmdd-yyyymmdd非必填，不填则立即自动下单)",
+        "下单时间(格式：0、9、10...21、22、23，非必填，不填则默认立即建单；当填写期望下单日期范围，下单时间必填)",
+        "配送中心*(格式：可填写补货仓全选；可填写北京,上海,广州。如有复杂组合可填写补货仓全选,北京)",
+        "币种（非必填，不填则默认RMB；全球购SKU建议填写）",
+        "备注",
+        "建单是否允许部分成功（格式：是、否，不填则默认是，仅允许全部留空或全部填是或全部填否；若已维护生单参数设置-商品维度拆单，全部填否即不允许部分成功的情况下已维护的商品维度拆单不生效）",
+        "可替代老品（仅大件sku可用；格式：老品skuid，每行仅支持输入1个）",
+        "sku起订量（仅大件sku可用；格式：0或正整数）",
+        "是否校验箱规及箱规系数（格式：是、否，不填则默认是）",
+    ]
+    wb = openpyxl.Workbook()
     ws = wb.active
-    clear_data_rows(ws)
-    max_col = ws.max_column
+    prepare_output_sheet(ws, headers, [18, 48, 16, 28, 42, 58, 52, 16, 18, 72, 34, 24, 30])
     for idx, row in enumerate(rows, start=2):
-        copy_row_style(ws, 1, idx, max_col)
         ws.cell(idx, 1).value = row.sku
         ws.cell(idx, 3).value = row.quantity
         ws.cell(idx, 4).value = row.supplier_code or "zqsyq"
