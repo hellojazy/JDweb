@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+
+node_modules/
+
+uploads/
+outputs/
+jd_replenishment.sqlite3
+*.log
+uvicorn-*.out.log
+uvicorn-*.err.log
+
+~$*.xlsx
+*.xlsx
+!static/templates/*.xlsx
+.DS_Store
+Thumbs.db

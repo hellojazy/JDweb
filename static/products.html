@@ -1,0 +1,68 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>商品管理</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260625-docs-template1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>商品管理</h1>
+          <p>导入商品箱规表，按商品 SKU 更新覆盖主数据，重复 SKU 保留最后一次导入内容。</p>
+        </div>
+        <nav class="top-actions">
+          <a href="/">补货生成</a>
+          <a href="/history">生成历史</a>
+          <a href="/static/docs/操作说明.md" target="_blank" rel="noopener">操作说明</a>
+          <a href="/static/docs/程序使用文档.md" target="_blank" rel="noopener">使用文档</a>
+          <div class="status-pill" id="statusPill">商品表就绪</div>
+        </nav>
+      </header>
+
+      <section class="management-grid">
+        <form class="panel" id="productImportForm">
+          <div class="section-title">
+            <span class="icon">X</span>
+            <h2>导入商品表</h2>
+          </div>
+          <label class="dropzone" for="productFile" id="dropzone">
+            <input id="productFile" name="file" type="file" accept=".xlsx" required />
+            <span class="file-icon">XLSX</span>
+            <strong id="fileLabel">选择或拖入商品箱规表</strong>
+            <small>格式同：京东-产品sku 箱规.xlsx</small>
+          </label>
+          <div class="upload-help-row">
+            <a href="/static/templates/商品导入模板.xlsx" download>下载商品导入模板</a>
+            <span>SKU 是唯一 ID，本次导入会全量同步商品库</span>
+          </div>
+          <div class="rule-note" id="importNote">商品SKU是唯一ID。导入后以本次表格为准：存在则更新，不存在则新增，表格中没有的旧商品会删除。</div>
+          <button class="primary-button" type="submit">导入并更新商品</button>
+        </form>
+
+        <section class="panel">
+          <div class="table-head">
+            <h2>当前商品</h2>
+            <span id="productMeta">正在读取</span>
+          </div>
+          <div class="toolbar-row" style="padding: 14px 20px; border-bottom: 1px solid var(--line)">
+            <input class="plain-input" id="productSearch" type="search" placeholder="搜索 SKU / 商品名称" />
+            <button class="secondary-button" type="button" id="refreshProducts">刷新</button>
+          </div>
+          <div class="table-wrap product-table-wrap">
+            <table>
+              <thead id="productHead"></thead>
+              <tbody id="productBody">
+                <tr><td class="placeholder">暂无数据</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/static/products.js?v=20260625-product-sync1"></script>
+  </body>
+</html>
+

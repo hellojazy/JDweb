@@ -1,0 +1,65 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>生成历史</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260625-docs-template1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>生成历史</h1>
+          <p>查看每次生成的手工作业单和 B 仓入仓预览，并重新下载对应 Excel。</p>
+        </div>
+        <nav class="top-actions">
+          <a href="/">补货生成</a>
+          <a href="/products">商品管理</a>
+          <a href="/static/docs/操作说明.md" target="_blank" rel="noopener">操作说明</a>
+          <a href="/static/docs/程序使用文档.md" target="_blank" rel="noopener">使用文档</a>
+          <div class="status-pill" id="statusPill">历史记录</div>
+        </nav>
+      </header>
+
+      <section class="management-grid">
+        <section class="panel">
+          <div class="table-head">
+            <h2>记录</h2>
+            <span id="historyMeta">正在读取</span>
+          </div>
+          <div class="history-list" id="historyList">
+            <p class="empty">暂无记录</p>
+          </div>
+          <div class="history-pager">
+            <button type="button" class="secondary-button" id="prevPage">上一页</button>
+            <span id="pageMeta">第 1 / 1 页</span>
+            <button type="button" class="secondary-button" id="nextPage">下一页</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="table-head">
+            <h2 id="recordTitle">预览</h2>
+            <span id="recordMeta">选择一条记录</span>
+          </div>
+          <div class="downloads" id="downloads"></div>
+          <section class="preview-tabs">
+            <button type="button" class="tab-button active" data-preview="manual">手工作业单预览</button>
+            <button type="button" class="tab-button" data-preview="b">B仓入仓预览</button>
+          </section>
+          <div class="table-wrap history-preview-wrap">
+            <table>
+              <thead id="previewHead"></thead>
+              <tbody id="previewBody">
+                <tr><td class="placeholder">暂无数据</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/static/history.js?v=20260625-history-manual-cols1"></script>
+  </body>
+</html>
+

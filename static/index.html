@@ -1,0 +1,195 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>京东补货单生成器</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260625-docs-template1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>京东补货单生成器</h1>
+          <p>导入京东库存，按14日销售自动识别热销品，生成手工作业单和京东入 B 仓表格。</p>
+        </div>
+        <nav class="top-actions">
+          <a href="/products">商品管理</a>
+          <a href="/history">生成历史</a>
+          <a href="/static/docs/操作说明.md" target="_blank" rel="noopener">操作说明</a>
+          <a href="/static/docs/程序使用文档.md" target="_blank" rel="noopener">使用文档</a>
+          <div class="status-pill" id="statusPill">模板已就绪</div>
+        </nav>
+      </header>
+
+      <section class="workspace">
+        <form class="panel upload-panel" id="generateForm">
+          <div class="section-title">
+            <span class="icon">X</span>
+            <h2>导入库存</h2>
+          </div>
+
+          <label class="dropzone" for="inventoryFile" id="dropzone">
+            <input id="inventoryFile" name="inventory" type="file" accept=".xlsx" required />
+            <span class="file-icon">XLSX</span>
+            <strong id="fileLabel">选择或拖入京东库存文件</strong>
+            <small>例如：京东库存-20260621.xlsx</small>
+          </label>
+          <div class="upload-help-row">
+            <a href="/static/templates/库存导入模板.xlsx" download>下载库存导入模板</a>
+            <span>模板只保留有效表头，不含真实库存数据</span>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>生成日期</span>
+              <input id="runDate" name="run_date" type="date" required />
+            </label>
+            <label class="field">
+              <span>热销品周转周期</span>
+              <input id="hotTurnoverDays" name="hot_turnover_days" type="number" min="0" step="1" value="30" />
+            </label>
+            <label class="field">
+              <span>普通品周转周期</span>
+              <input id="normalTurnoverDays" name="normal_turnover_days" type="number" min="0" step="1" value="25" />
+            </label>
+            <label class="field">
+              <span>B仓周转周期</span>
+              <input id="bTurnoverDays" name="b_turnover_days" type="number" min="0" step="1" value="14" />
+            </label>
+            <label class="field">
+              <span>热销判定14日销量</span>
+              <input id="hotSalesThreshold" name="hot_sales_threshold" type="number" min="0" step="1" value="1000" />
+            </label>
+          </div>
+
+          <div class="template-list">
+            <div><span>产品箱规表</span><strong>只读取SKU、商品名称和箱规</strong></div>
+            <div><span>手工作业单</span><strong>分仓按热销/普通周期补货</strong></div>
+            <div><span>京东入B仓</span><strong>分仓差额 + 分仓日销 × B仓周转 - B仓库存</strong></div>
+          </div>
+
+          <button class="primary-button" type="submit">
+            <span>生成表格</span>
+            <span class="button-icon">→</span>
+          </button>
+        </form>
+
+        <section class="panel result-panel">
+          <div class="section-title">
+            <span class="icon">✓</span>
+            <h2>生成结果</h2>
+          </div>
+
+          <div class="metrics">
+            <div>
+              <span>手工单行数</span>
+              <strong id="manualCount">-</strong>
+            </div>
+            <div>
+              <span>B仓SKU</span>
+              <strong id="bCount">-</strong>
+            </div>
+            <div>
+              <span>B仓入库量</span>
+              <strong id="totalQty">-</strong>
+            </div>
+          </div>
+
+          <div class="rule-note" id="ruleNote">默认：14日销量超过1000为热销品，热销品30天，普通品25天，B仓14天周转。</div>
+
+          <div class="logic-list">
+            <div>
+              <span>C仓/分仓备货逻辑</span>
+              <strong>补货量 = ROUNDUP((日销 × 对应周转周期 - 分仓可订购库存 - 分仓采购在途数量) / 箱规) × 箱规；配送中心为全国的数据不生成分仓补货行。</strong>
+            </div>
+            <div>
+              <span>B仓备货逻辑</span>
+              <strong>入库量 = ROUNDUP((分仓补货差额 + 分仓日销合计 × B仓周转周期 - B仓本仓库存 - B仓采购在途数量) / 箱规) × 箱规；B仓库存只取配送中心为成都补货B。</strong>
+            </div>
+            <div>
+              <span>周期说明</span>
+              <strong>周转周期已包含调货运输时间，不再单独计算额外调货周期。</strong>
+            </div>
+          </div>
+
+          <div class="downloads" id="downloads">
+            <p class="empty">上传库存后，这里会出现 Excel 下载文件。</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="warning-grid">
+        <section class="panel warning-panel">
+          <div class="table-head">
+            <h2>库存不够14天销售预警</h2>
+            <span id="shortageMeta">暂无数据</span>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>商品名称</th>
+                  <th>配送中心</th>
+                  <th>可订购</th>
+                  <th>日销</th>
+                  <th>可售天数</th>
+                </tr>
+              </thead>
+              <tbody id="shortageBody">
+                <tr><td colspan="6" class="placeholder">暂无预警</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel warning-panel">
+          <div class="table-head">
+            <h2>库存滞销分仓预警</h2>
+            <span id="stagnantMeta">暂无数据</span>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>商品名称</th>
+                  <th>配送中心</th>
+                  <th>可订购</th>
+                  <th>14天销售量</th>
+                  <th>日销</th>
+                </tr>
+              </thead>
+              <tbody id="stagnantBody">
+                <tr><td colspan="6" class="placeholder">暂无预警</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="preview-tabs">
+        <button type="button" class="tab-button active" data-preview="manual">手工作业单预览</button>
+        <button type="button" class="tab-button" data-preview="b">B仓入仓预览</button>
+      </section>
+
+      <section class="table-section">
+        <div class="table-head">
+          <h2 id="previewTitle">手工作业单预览</h2>
+          <span id="previewMeta">全部数据，表格内滚动</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="previewHead"></thead>
+            <tbody id="previewBody">
+              <tr><td colspan="7" class="placeholder">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/static/app.js?v=20260625-table-compact1"></script>
+  </body>
+</html>
+
