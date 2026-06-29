@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from replenishment import (
@@ -25,6 +25,18 @@ from replenishment import (
 
 app = FastAPI(title="京东补货单生成器")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
+@app.middleware("http")
+async def add_robots_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet, noimageindex"
+    return response
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt() -> str:
+    return "User-agent: *\nDisallow: /\n"
 
 
 @app.get("/")

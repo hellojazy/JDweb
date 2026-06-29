@@ -211,3 +211,33 @@ git push origin main
 5. 持久化保留 `jd_replenishment.sqlite3`、`uploads/`、`outputs/`，不要随着代码更新覆盖。
 
 Windows 可用计划任务、NSSM 或启动脚本托管 Uvicorn；Linux 可用 systemd 托管 Uvicorn。
+
+## 防止搜索引擎爬虫
+
+本系统属于内部业务工具，不建议被搜索引擎收录。程序已经内置三层防护：
+
+- `/robots.txt` 返回：
+
+```text
+User-agent: *
+Disallow: /
+```
+
+- 所有 HTTP 响应都会带上：
+
+```text
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+```
+
+- 前台页面包含：
+
+```html
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+```
+
+这些设置可以阻止规范搜索引擎抓取和收录，但不能替代访问控制。公网部署时仍建议：
+
+- 不把业务系统提交到公开搜索入口。
+- 域名不要挂公开导航页。
+- 有条件时在 Nginx、宝塔或应用层增加账号密码、IP 白名单或 VPN 访问限制。
+- `uploads/`、`outputs/`、`jd_replenishment.sqlite3` 不要暴露为静态目录。
