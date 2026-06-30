@@ -214,7 +214,7 @@ function renderStagnant(rows) {
   }
 }
 
-function renderRankingList(listEl, metaEl, rows, totalAmount, emptyText, getTitle, getSubTitle) {
+function renderRankingChart(listEl, metaEl, rows, totalAmount, emptyText, getTitle, getSubTitle) {
   const safeRows = Array.isArray(rows) ? rows : [];
   metaEl.textContent = safeRows.length ? `总额 ${formatCurrency(totalAmount)} · 7日销售额占比` : "暂无数据";
   listEl.innerHTML = "";
@@ -223,26 +223,33 @@ function renderRankingList(listEl, metaEl, rows, totalAmount, emptyText, getTitl
     return;
   }
 
+  const maxShare = Math.max(...safeRows.map((row) => Number(row.share_pct) || 0), 1);
+  const chart = document.createElement("div");
+  chart.className = "bar-chart";
+
   safeRows.forEach((row, index) => {
     const share = Math.max(0, Math.min(100, Number(row.share_pct) || 0));
+    const barHeight = Math.max(4, (share / maxShare) * 100);
     const item = document.createElement("div");
-    item.className = "chart-row";
+    item.className = "bar-item";
     item.innerHTML = `
-      <div class="chart-rank">${index + 1}</div>
-      <div class="chart-main">
-        <div class="chart-title" title="${escapeHtml(getTitle(row))}">${escapeHtml(getTitle(row))}</div>
-        <div class="chart-sub">${escapeHtml(getSubTitle(row))}</div>
+      <div class="bar-value">${formatPercent(row.share_pct)}</div>
+      <div class="bar-plot">
+        <div class="bar-fill" style="height: ${barHeight}%"></div>
       </div>
-      <div class="chart-value">${formatCurrency(row.sales_amount)} · ${formatPercent(row.share_pct)}</div>
-      <div class="chart-bar-track"><div class="chart-bar-fill" style="width: ${share}%"></div></div>
+      <div class="bar-rank">TOP ${index + 1}</div>
+      <div class="bar-title" title="${escapeHtml(getTitle(row))}">${escapeHtml(getTitle(row))}</div>
+      <div class="bar-sub" title="${escapeHtml(getSubTitle(row))}">${escapeHtml(getSubTitle(row))}</div>
+      <div class="bar-money">${formatCurrency(row.sales_amount)}</div>
     `;
-    listEl.append(item);
+    chart.append(item);
   });
+  listEl.append(chart);
 }
 
 function renderSalesRankings(rankings) {
   const data = rankings || {};
-  renderRankingList(
+  renderRankingChart(
     productRankingList,
     productRankingMeta,
     data.product_top10,
@@ -251,7 +258,7 @@ function renderSalesRankings(rankings) {
     (row) => row.product_name || row.sku || "-",
     (row) => `SKU ${row.sku || "-"} · 7日销量 ${formatNumber(row.sales_7, 0)}`
   );
-  renderRankingList(
+  renderRankingChart(
     centerRankingList,
     centerRankingMeta,
     data.center_top10,
