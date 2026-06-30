@@ -229,18 +229,20 @@ function renderRankingChart(listEl, metaEl, rows, totalAmount, emptyText, getTit
 
   safeRows.forEach((row, index) => {
     const share = Math.max(0, Math.min(100, Number(row.share_pct) || 0));
-    const barHeight = Math.max(4, (share / maxShare) * 100);
+    const barWidth = Math.max(3, (share / maxShare) * 100);
+    const title = getTitle(row);
+    const subTitle = getSubTitle(row);
+    const tooltip = `${title}\n${subTitle}\n销售占比 ${formatPercent(row.share_pct)}\n销售额 ${formatCurrency(row.sales_amount)}`;
     const item = document.createElement("div");
     item.className = "bar-item";
     item.innerHTML = `
-      <div class="bar-value">${formatPercent(row.share_pct)}</div>
-      <div class="bar-plot">
-        <div class="bar-fill" style="height: ${barHeight}%"></div>
-      </div>
       <div class="bar-rank">TOP ${index + 1}</div>
-      <div class="bar-title" title="${escapeHtml(getTitle(row))}">${escapeHtml(getTitle(row))}</div>
-      <div class="bar-sub" title="${escapeHtml(getSubTitle(row))}">${escapeHtml(getSubTitle(row))}</div>
-      <div class="bar-money">${formatCurrency(row.sales_amount)}</div>
+      <div class="bar-title" title="${escapeHtml(tooltip)}">${escapeHtml(title)}</div>
+      <div class="bar-plot" title="${escapeHtml(tooltip)}">
+        <div class="bar-fill" style="width: ${barWidth}%"></div>
+      </div>
+      <div class="bar-value">${formatPercent(row.share_pct)}</div>
+      <div class="bar-sub" title="${escapeHtml(tooltip)}">${escapeHtml(subTitle)}</div>
     `;
     chart.append(item);
   });
