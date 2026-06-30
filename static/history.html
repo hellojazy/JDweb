@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
     <title>生成历史</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260625-docs-template1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260630-history-ranking1" />
   </head>
   <body>
     <main class="shell">
@@ -44,6 +44,27 @@
             <span id="recordMeta">选择一条记录</span>
           </div>
           <div class="downloads" id="downloads"></div>
+          <section class="history-ranking-grid">
+            <section class="ranking-panel inline-ranking-panel">
+              <div class="table-head">
+                <h2>产品7日销售排行TOP10</h2>
+                <span id="historyProductRankingMeta">暂无数据</span>
+              </div>
+              <div class="chart-list" id="historyProductRankingList">
+                <p class="placeholder">暂无产品销售排行</p>
+              </div>
+            </section>
+
+            <section class="ranking-panel inline-ranking-panel">
+              <div class="table-head">
+                <h2>站点7日销售排行TOP10</h2>
+                <span id="historyCenterRankingMeta">暂无数据</span>
+              </div>
+              <div class="chart-list" id="historyCenterRankingList">
+                <p class="placeholder">暂无站点销售排行</p>
+              </div>
+            </section>
+          </section>
           <section class="preview-tabs">
             <button type="button" class="tab-button active" data-preview="manual">手工作业单预览</button>
             <button type="button" class="tab-button" data-preview="b">B仓入仓预览</button>
@@ -59,7 +80,7 @@
         </section>
       </section>
     </main>
-    <script src="/static/history.js?v=20260625-history-manual-cols1"></script>
+    <script src="/static/history.js?v=20260630-history-ranking1"></script>
   </body>
 </html>
 

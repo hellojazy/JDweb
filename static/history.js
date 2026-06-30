@@ -6,6 +6,10 @@ const recordMeta = document.querySelector("#recordMeta");
 const downloads = document.querySelector("#downloads");
 const previewHead = document.querySelector("#previewHead");
 const previewBody = document.querySelector("#previewBody");
+const historyProductRankingList = document.querySelector("#historyProductRankingList");
+const historyProductRankingMeta = document.querySelector("#historyProductRankingMeta");
+const historyCenterRankingList = document.querySelector("#historyCenterRankingList");
+const historyCenterRankingMeta = document.querySelector("#historyCenterRankingMeta");
 const tabButtons = document.querySelectorAll(".tab-button");
 const prevPage = document.querySelector("#prevPage");
 const nextPage = document.querySelector("#nextPage");
@@ -28,6 +32,19 @@ function escapeHtml(value) {
 function formatNumber(value, digits = 0) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: digits }).format(value);
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPercent(value) {
+  return `${formatNumber(value, 1)}%`;
 }
 
 function formatDays(value) {
@@ -110,6 +127,63 @@ function renderPreview() {
   recordMeta.textContent = `共 ${rows.length} 行，表格内滚动查看`;
 }
 
+function renderRankingChart(listEl, metaEl, rows, totalAmount, emptyText, getTitle, getSubTitle) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  metaEl.textContent = safeRows.length ? `总额 ${formatCurrency(totalAmount)} · 7日销售额占比` : "暂无数据";
+  listEl.innerHTML = "";
+  if (!safeRows.length) {
+    listEl.innerHTML = `<p class="placeholder">${escapeHtml(emptyText)}</p>`;
+    return;
+  }
+
+  const maxShare = Math.max(...safeRows.map((row) => Number(row.share_pct) || 0), 1);
+  const chart = document.createElement("div");
+  chart.className = "bar-chart";
+
+  safeRows.forEach((row, index) => {
+    const share = Math.max(0, Math.min(100, Number(row.share_pct) || 0));
+    const barWidth = Math.max(3, (share / maxShare) * 100);
+    const title = getTitle(row);
+    const subTitle = getSubTitle(row);
+    const tooltip = `${title}\n${subTitle}\n销售占比 ${formatPercent(row.share_pct)}\n销售额 ${formatCurrency(row.sales_amount)}`;
+    const item = document.createElement("div");
+    item.className = "bar-item";
+    item.innerHTML = `
+      <div class="bar-rank">TOP ${index + 1}</div>
+      <div class="bar-title" title="${escapeHtml(tooltip)}">${escapeHtml(title)}</div>
+      <div class="bar-plot" title="${escapeHtml(tooltip)}">
+        <div class="bar-fill" style="width: ${barWidth}%"></div>
+      </div>
+      <div class="bar-value">${formatPercent(row.share_pct)}</div>
+      <div class="bar-sub" title="${escapeHtml(tooltip)}">${escapeHtml(subTitle)}</div>
+    `;
+    chart.append(item);
+  });
+  listEl.append(chart);
+}
+
+function renderSalesRankings(rankings) {
+  const data = rankings || {};
+  renderRankingChart(
+    historyProductRankingList,
+    historyProductRankingMeta,
+    data.product_top10,
+    data.product_total_amount,
+    "暂无产品销售排行",
+    (row) => row.product_name || row.sku || "-",
+    (row) => `SKU ${row.sku || "-"} · 7日销量 ${formatNumber(row.sales_7, 0)}`
+  );
+  renderRankingChart(
+    historyCenterRankingList,
+    historyCenterRankingMeta,
+    data.center_top10,
+    data.center_total_amount,
+    "暂无站点销售排行",
+    (row) => row.center || "-",
+    (row) => `7日销量 ${formatNumber(row.sales_7, 0)}`
+  );
+}
+
 async function loadRecord(runId) {
   statusPill.textContent = "正在读取";
   const response = await fetch(`/api/history/${runId}`);
@@ -118,6 +192,7 @@ async function loadRecord(runId) {
   selectedRecord = payload;
   recordTitle.textContent = `${payload.run_date} 生成记录`;
   renderDownloads(payload.files);
+  renderSalesRankings(payload.sales_rankings);
   renderPreview();
   statusPill.textContent = "历史记录";
 }

@@ -456,6 +456,32 @@ h1 {
   font-size: 12px;
 }
 
+.history-ranking-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.inline-ranking-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.inline-ranking-panel .table-head {
+  padding: 12px 14px;
+}
+
+.inline-ranking-panel .table-head h2 {
+  font-size: 15px;
+}
+
+.inline-ranking-panel .chart-list {
+  min-height: 390px;
+  padding: 12px 14px 14px;
+}
+
 .rule-note {
   margin-top: 14px;
   padding: 12px;
@@ -905,6 +931,7 @@ td:nth-child(6) {
   .topbar,
   .workspace,
   .ranking-grid,
+  .history-ranking-grid,
   .warning-grid,
   .management-grid {
     display: grid;
