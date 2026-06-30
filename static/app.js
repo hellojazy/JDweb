@@ -17,6 +17,10 @@ const shortageBody = document.querySelector("#shortageBody");
 const shortageMeta = document.querySelector("#shortageMeta");
 const stagnantBody = document.querySelector("#stagnantBody");
 const stagnantMeta = document.querySelector("#stagnantMeta");
+const productRankingList = document.querySelector("#productRankingList");
+const productRankingMeta = document.querySelector("#productRankingMeta");
+const centerRankingList = document.querySelector("#centerRankingList");
+const centerRankingMeta = document.querySelector("#centerRankingMeta");
 const tabButtons = document.querySelectorAll(".tab-button");
 
 let latestPayload = null;
@@ -35,6 +39,19 @@ function formatNumber(value, digits = 0) {
     maximumFractionDigits: digits,
     minimumFractionDigits: 0,
   }).format(value);
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPercent(value) {
+  return `${formatNumber(value, 1)}%`;
 }
 
 function formatDays(value) {
@@ -138,7 +155,11 @@ function renderBPreview(rows) {
 
 function renderPreview() {
   if (!latestPayload) {
-    renderManualPreview([]);
+    if (activePreview === "manual") {
+      renderManualPreview([]);
+    } else {
+      renderBPreview([]);
+    }
     previewMeta.textContent = "全部数据，表格内滚动";
     return;
   }
@@ -191,6 +212,54 @@ function renderStagnant(rows) {
     `;
     stagnantBody.append(tr);
   }
+}
+
+function renderRankingList(listEl, metaEl, rows, totalAmount, emptyText, getTitle, getSubTitle) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  metaEl.textContent = safeRows.length ? `总额 ${formatCurrency(totalAmount)} · 7日销售额占比` : "暂无数据";
+  listEl.innerHTML = "";
+  if (!safeRows.length) {
+    listEl.innerHTML = `<p class="placeholder">${escapeHtml(emptyText)}</p>`;
+    return;
+  }
+
+  safeRows.forEach((row, index) => {
+    const share = Math.max(0, Math.min(100, Number(row.share_pct) || 0));
+    const item = document.createElement("div");
+    item.className = "chart-row";
+    item.innerHTML = `
+      <div class="chart-rank">${index + 1}</div>
+      <div class="chart-main">
+        <div class="chart-title" title="${escapeHtml(getTitle(row))}">${escapeHtml(getTitle(row))}</div>
+        <div class="chart-sub">${escapeHtml(getSubTitle(row))}</div>
+      </div>
+      <div class="chart-value">${formatCurrency(row.sales_amount)} · ${formatPercent(row.share_pct)}</div>
+      <div class="chart-bar-track"><div class="chart-bar-fill" style="width: ${share}%"></div></div>
+    `;
+    listEl.append(item);
+  });
+}
+
+function renderSalesRankings(rankings) {
+  const data = rankings || {};
+  renderRankingList(
+    productRankingList,
+    productRankingMeta,
+    data.product_top10,
+    data.product_total_amount,
+    "暂无产品销售排行",
+    (row) => row.product_name || row.sku || "-",
+    (row) => `SKU ${row.sku || "-"} · 7日销量 ${formatNumber(row.sales_7, 0)}`
+  );
+  renderRankingList(
+    centerRankingList,
+    centerRankingMeta,
+    data.center_top10,
+    data.center_total_amount,
+    "暂无站点销售排行",
+    (row) => row.center || "-",
+    (row) => `7日销量 ${formatNumber(row.sales_7, 0)}`
+  );
 }
 
 fileInput.addEventListener("change", () => {
@@ -256,6 +325,7 @@ form.addEventListener("submit", async (event) => {
     renderDownloads(payload.files);
     renderShortage(payload.warnings.shortage);
     renderStagnant(payload.warnings.stagnant);
+    renderSalesRankings(payload.sales_rankings);
     renderPreview();
     setStatus("生成完成");
   } catch (error) {
@@ -266,4 +336,5 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+renderSalesRankings(null);
 renderPreview();

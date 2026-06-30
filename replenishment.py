@@ -322,6 +322,8 @@ def read_inventory(path: Path) -> list[dict[str, Any]]:
     if missing:
         raise ValueError(f"库存文件缺少列：{', '.join(missing)}")
 
+    sales_7_col = h.get("近7日出库商品件数")
+    price_col = h.get("全国采购价")
     aggregated: dict[tuple[str, str, str], dict[str, Any]] = {}
     for row in range(2, ws.max_row + 1):
         sku = normalize_sku(ws.cell(row, h["SKU"]).value)
@@ -341,12 +343,20 @@ def read_inventory(path: Path) -> list[dict[str, Any]]:
                 "supplier_code": ws.cell(row, h["供应商简码"]).value or "",
                 "available_order_qty": 0.0,
                 "purchase_in_transit_qty": 0.0,
+                "unit_price": 0.0,
+                "sales_7": 0.0,
+                "sales_7_amount": 0.0,
                 "sales_14": 0.0,
                 "days_14": 0.0,
             },
         )
+        unit_price = number(ws.cell(row, price_col).value) if price_col else 0.0
+        sales_7 = number(ws.cell(row, sales_7_col).value) if sales_7_col else 0.0
         item["available_order_qty"] += number(ws.cell(row, h["可订购库存"]).value)
         item["purchase_in_transit_qty"] += number(ws.cell(row, h["采购在途数量"]).value)
+        item["unit_price"] = item["unit_price"] or unit_price
+        item["sales_7"] += sales_7
+        item["sales_7_amount"] += sales_7 * unit_price
         item["sales_14"] += number(ws.cell(row, h["近14日出库商品件数"]).value)
         item["days_14"] = max(item["days_14"], number(ws.cell(row, h["14日有货天数"]).value))
 
@@ -542,13 +552,93 @@ def build_inventory_warnings(
     return {"shortage": shortage, "stagnant": stagnant}
 
 
+def ranking_rows(buckets: list[dict[str, Any]], total_amount: float, key_name: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for bucket in sorted(buckets, key=lambda item: item["sales_amount"], reverse=True)[:10]:
+        sales_amount = number(bucket["sales_amount"])
+        rows.append(
+            {
+                key_name: bucket[key_name],
+                "sku": bucket.get("sku", ""),
+                "product_name": bucket.get("product_name", ""),
+                "sales_7": number(bucket.get("sales_7")),
+                "sales_amount": sales_amount,
+                "share_pct": (sales_amount / total_amount * 100) if total_amount > 0 else 0,
+            }
+        )
+    return rows
+
+
+def build_sales_rankings(
+    inventory: list[dict[str, Any]],
+    actual_b_warehouse: str,
+    product_by_sku: dict[str, str],
+) -> dict[str, Any]:
+    national_by_sku: dict[str, dict[str, Any]] = {}
+    branch_by_sku: dict[str, dict[str, Any]] = {}
+    center_by_name: dict[str, dict[str, Any]] = {}
+
+    for item in inventory:
+        center = item["center"]
+        sku = item["sku"]
+        sales_7 = number(item.get("sales_7"))
+        sales_amount = number(item.get("sales_7_amount"))
+        product_name = managed_product_name(item, product_by_sku)
+
+        if center == "全国":
+            bucket = national_by_sku.setdefault(
+                sku, {"sku": sku, "product_name": product_name, "sales_7": 0.0, "sales_amount": 0.0}
+            )
+            bucket["sales_7"] += sales_7
+            bucket["sales_amount"] += sales_amount
+            if product_name:
+                bucket["product_name"] = product_name
+        elif center != actual_b_warehouse:
+            product_bucket = branch_by_sku.setdefault(
+                sku, {"sku": sku, "product_name": product_name, "sales_7": 0.0, "sales_amount": 0.0}
+            )
+            product_bucket["sales_7"] += sales_7
+            product_bucket["sales_amount"] += sales_amount
+            if product_name:
+                product_bucket["product_name"] = product_name
+
+            center_bucket = center_by_name.setdefault(
+                center, {"center": center, "sales_7": 0.0, "sales_amount": 0.0}
+            )
+            center_bucket["sales_7"] += sales_7
+            center_bucket["sales_amount"] += sales_amount
+
+    product_buckets = list(national_by_sku.values())
+    for sku, bucket in branch_by_sku.items():
+        if sku not in national_by_sku:
+            product_buckets.append(bucket)
+
+    product_total = sum(number(item["sales_amount"]) for item in product_buckets)
+    center_buckets = list(center_by_name.values())
+    center_total = sum(number(item["sales_amount"]) for item in center_buckets)
+
+    return {
+        "basis": "近7日出库商品件数 × 全国采购价",
+        "product_total_amount": product_total,
+        "center_total_amount": center_total,
+        "product_top10": ranking_rows(product_buckets, product_total, "sku"),
+        "center_top10": ranking_rows(center_buckets, center_total, "center"),
+    }
+
+
 def calculate_replenishment(
     inventory_path: Path,
     hot_turnover_days: int = DEFAULT_HOT_TURNOVER_DAYS,
     normal_turnover_days: int = DEFAULT_NORMAL_TURNOVER_DAYS,
     b_turnover_days: int = DEFAULT_B_TURNOVER_DAYS,
     hot_sales_threshold: int = DEFAULT_HOT_SALES_THRESHOLD,
-) -> tuple[list[ReplenishmentRow], list[ReplenishmentRow], dict[str, Any], dict[str, list[dict[str, Any]]]]:
+) -> tuple[
+    list[ReplenishmentRow],
+    list[ReplenishmentRow],
+    dict[str, Any],
+    dict[str, list[dict[str, Any]]],
+    dict[str, Any],
+]:
     meta = read_template_metadata()
     selected = meta["selected"]
     box_specs = meta["box_specs"]
@@ -607,6 +697,7 @@ def calculate_replenishment(
     manual_rows.sort(key=lambda row: (row.sku, row.center))
     b_rows = calculate_b_warehouse_rows(inventory, meta, manual_rows, branch_daily_by_sku, b_turnover_days, hot_by_sku)
     warnings = build_inventory_warnings(inventory, actual_b_warehouse, meta["product_by_sku"])
+    sales_rankings = build_sales_rankings(inventory, actual_b_warehouse, meta["product_by_sku"])
     summary = {
         "manual_count": len(manual_rows),
         "b_count": len(b_rows),
@@ -622,7 +713,7 @@ def calculate_replenishment(
         "skipped_missing_box": skipped_missing_box,
         "actual_b_warehouse": actual_b_warehouse,
     }
-    return manual_rows, b_rows, summary, warnings
+    return manual_rows, b_rows, summary, warnings, sales_rankings
 
 
 def prepare_output_sheet(ws, headers: list[str], widths: list[int]) -> None:
@@ -775,7 +866,7 @@ def generate_files(
     hot_sales_threshold: int = DEFAULT_HOT_SALES_THRESHOLD,
 ) -> dict[str, Any]:
     run_date = run_date or date.today()
-    manual_rows, b_rows, summary, warnings = calculate_replenishment(
+    manual_rows, b_rows, summary, warnings, sales_rankings = calculate_replenishment(
         inventory_path,
         hot_turnover_days=hot_turnover_days,
         normal_turnover_days=normal_turnover_days,
@@ -807,6 +898,7 @@ def generate_files(
         "manual_preview": [asdict(row) for row in manual_rows],
         "b_preview": [asdict(row) for row in b_rows],
         "warnings": warnings,
+        "sales_rankings": sales_rankings,
         "files": {
             "manual": {"name": manual_name, "url": f"/download/{run_id}/{manual_name}"},
             "b": {"name": b_name, "url": f"/download/{run_id}/{b_name}"},
